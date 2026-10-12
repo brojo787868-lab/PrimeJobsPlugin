@@ -381,7 +381,7 @@ export default function App() {
                 : 'border-transparent hover:text-slate-200 hover:border-slate-700'
             }`}
           >
-            Server Guide
+            GitHub &amp; Build
           </button>
         </nav>
 
@@ -420,7 +420,7 @@ export default function App() {
                 { id: 'SIMULATOR', label: 'Chest GUI Sandbox' },
                 { id: 'EDITOR', label: 'Customize 5 Jobs' },
                 { id: 'CODE', label: 'Java & YAML Code' },
-                { id: 'GUIDE', label: 'Build Guide' },
+                { id: 'GUIDE', label: 'GitHub & Build' },
               ] as { id: ActiveTab; label: string }[]
             ).map((tab) => (
               <button

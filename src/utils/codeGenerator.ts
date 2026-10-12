@@ -884,6 +884,55 @@ public class JobsCommand implements CommandExecutor, TabCompleter {
       description: 'Maven project descriptor configured for PaperMC API and VaultAPI.',
       content: pomXml,
     },
+    {
+      path: '.github/workflows/build-plugin.yml',
+      filename: 'build-plugin.yml',
+      language: 'yaml',
+      description: 'GitHub Actions workflow that automatically compiles the .jar in the cloud and publishes a GitHub Release.',
+      content: `name: Build & Release ${config.pluginName} JAR
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Compile Plugin JAR with Maven
+        run: mvn -B clean package
+
+      - name: Upload Compiled JAR to Actions Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${config.pluginName}-${config.version}-JAR
+          path: target/${config.pluginName}-${config.version}.jar
+
+      - name: Publish Compiled JAR to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${config.version}
+          name: "${config.pluginName} v${config.version} (Ready-to-Use .JAR)"
+          body: |
+            ### ${config.pluginName} v${config.version} for Paper / Spigot ${config.apiVersion}+
+            Download **\`${config.pluginName}-${config.version}.jar\`** below and drop it directly into your server's \`plugins/\` folder alongside **Vault**.
+          files: target/${config.pluginName}-${config.version}.jar
+`,
+    },
   ];
 }
 
@@ -908,36 +957,47 @@ function crc32(bytes: Uint8Array): number {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
-export function downloadMavenProjectZip(config: PluginConfig) {
-  const files = generatePluginFiles(config);
-  const encoder = new TextEncoder();
-  const rootFolder = `${config.pluginName}-${config.version}`;
-
-  const readmeContent = `# ${config.pluginName} v${config.version} (Spigot / Paper ${config.apiVersion}+)
+export function getReadmeContent(config: PluginConfig): string {
+  return `# ${config.pluginName} v${config.version} (Spigot / Paper ${config.apiVersion}+)
 
 Generated with PrimeJobs Studio.
+
+## How to Download the Compiled \`.jar\` directly from GitHub
+> **Why doesn't GitHub's "Download ZIP" work in a Minecraft server?**
+> GitHub's green **Code → Download ZIP** button downloads raw \`.java\` source code, which Minecraft cannot load directly.
+> This repository includes an automatic **GitHub Actions compiler** (\`.github/workflows/build-plugin.yml\`) that compiles **\`${config.pluginName}-${config.version}.jar\`** in the cloud automatically!
+
+### Get Your Ready-to-Use \`.jar\` File on GitHub:
+1. Push or upload these files to the root of your GitHub repository.
+2. Click the **Actions** tab on your GitHub repository — GitHub automatically runs \`mvn clean package\` with Java 21.
+3. Once the green checkmark appears (~45 seconds), go to the **Releases** section on the right side of your GitHub repository (or click the workflow run in **Actions → Artifacts**) and download **\`${config.pluginName}-${config.version}.jar\`**!
 
 ## Features
 - **5 Complete Server Jobs**: ${config.jobs.map((j) => j.name).join(', ')}
 - **Interactive 54-Slot Chest GUI**: \`/jobs\` with live XP progress bars, income bonus multipliers, and task inspection sub-menus.
 - **Vault Economy Integration**: Instant payouts with Action Bar notifications and level-up broadcasts.
 
-## How to Compile (Maven)
-1. Ensure Java 21+ and Maven are installed.
-2. Run:
-   \`\`\`bash
-   mvn clean package
-   \`\`\`
-3. Copy \`target/${config.pluginName}-${config.version}.jar\` into your Minecraft server's \`plugins/\` folder alongside **Vault** and an economy provider (e.g. EssentialsX).
+## Local Compilation (Optional — If You Have Maven Installed)
+\`\`\`bash
+mvn clean package
+\`\`\`
+Then copy \`target/${config.pluginName}-${config.version}.jar\` into your Minecraft server's \`plugins/\` folder alongside **Vault** and an economy provider (e.g. EssentialsX).
 `;
+}
 
+export function downloadMavenProjectZip(config: PluginConfig) {
+  const files = generatePluginFiles(config);
+  const encoder = new TextEncoder();
+  const readmeContent = getReadmeContent(config);
+
+  // Place files at the root of the ZIP so uploading directly to GitHub works with GitHub Actions
   const allEntries = [
     ...files.map((f) => ({
-      name: `${rootFolder}/${f.path}`,
+      name: f.path,
       data: encoder.encode(f.content),
     })),
     {
-      name: `${rootFolder}/README.md`,
+      name: 'README.md',
       data: encoder.encode(readmeContent),
     },
   ];
@@ -954,17 +1014,17 @@ Generated with PrimeJobs Studio.
     // Local file header (30 bytes + name)
     const localHeader = new Uint8Array(30 + nameBytes.length);
     const lv = new DataView(localHeader.buffer);
-    lv.setUint32(0, 0x04034b50, true); // signature
-    lv.setUint16(4, 20, true); // version needed
-    lv.setUint16(6, 0, true); // flags
-    lv.setUint16(8, 0, true); // compression (0 = store)
-    lv.setUint16(10, 0, true); // mod time
-    lv.setUint16(12, 0, true); // mod date
-    lv.setUint32(14, crc, true); // crc32
-    lv.setUint32(18, dataBytes.length, true); // compressed size
-    lv.setUint32(22, dataBytes.length, true); // uncompressed size
-    lv.setUint16(26, nameBytes.length, true); // file name length
-    lv.setUint16(28, 0, true); // extra field length
+    lv.setUint32(0, 0x04034b50, true);
+    lv.setUint16(4, 20, true);
+    lv.setUint16(6, 0, true);
+    lv.setUint16(8, 0, true);
+    lv.setUint16(10, 0, true);
+    lv.setUint16(12, 0, true);
+    lv.setUint32(14, crc, true);
+    lv.setUint32(18, dataBytes.length, true);
+    lv.setUint32(22, dataBytes.length, true);
+    lv.setUint16(26, nameBytes.length, true);
+    lv.setUint16(28, 0, true);
     localHeader.set(nameBytes, 30);
 
     localParts.push(localHeader, dataBytes);
@@ -1011,9 +1071,101 @@ Generated with PrimeJobs Studio.
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${config.pluginName}-${config.version}-Maven.zip`;
+  a.download = `${config.pluginName}-${config.version}-GitHub-Ready.zip`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 3000);
+}
+
+function toBase64Utf8(str: string): string {
+  const bytes = new TextEncoder().encode(str);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+export async function pushPluginToGitHub(params: {
+  config: PluginConfig;
+  repoFullName: string; // e.g. "username/PrimeJobs"
+  token: string;
+  branch?: string;
+  onProgress?: (msg: string) => void;
+}): Promise<{ repoUrl: string; actionsUrl: string; releasesUrl: string }> {
+  const { config, repoFullName, token, branch = 'main', onProgress } = params;
+  const cleanRepo = repoFullName
+    .trim()
+    .replace(/^https?:\/\/github\.com\//i, '')
+    .replace(/\.git$/i, '')
+    .replace(/\/+$/, '');
+
+  if (!cleanRepo.includes('/')) {
+    throw new Error('Please enter your repository in the format username/repository (e.g. steve/PrimeJobs).');
+  }
+
+  const headers: Record<string, string> = {
+    Accept: 'application/vnd.github+json',
+    Authorization: `Bearer ${token.trim()}`,
+    'Content-Type': 'application/json',
+  };
+
+  onProgress?.(`Verifying GitHub repository ${cleanRepo}...`);
+  const repoRes = await fetch(`https://api.github.com/repos/${cleanRepo}`, { headers });
+  if (repoRes.status === 404) {
+    throw new Error(
+      `Repository "${cleanRepo}" not found or token lacks "repo" / "Contents: Read & Write" permission.`
+    );
+  }
+  if (!repoRes.ok) {
+    const errData = await repoRes.json().catch(() => ({}));
+    throw new Error(errData.message || `GitHub API error (${repoRes.status})`);
+  }
+
+  const files = [
+    ...generatePluginFiles(config).map((f) => ({ path: f.path, content: f.content })),
+    { path: 'README.md', content: getReadmeContent(config) },
+  ];
+
+  // Push each file via Contents API so it works even on brand-new / empty repositories
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    onProgress?.(`Uploading (${i + 1}/${files.length}): ${file.path}...`);
+
+    // Check if file already exists to get its sha
+    let existingSha: string | undefined;
+    const getRes = await fetch(
+      `https://api.github.com/repos/${cleanRepo}/contents/${file.path}?ref=${encodeURIComponent(branch)}`,
+      { headers }
+    );
+    if (getRes.ok) {
+      const existingData = await getRes.json();
+      existingSha = existingData.sha;
+    }
+
+    const putRes = await fetch(`https://api.github.com/repos/${cleanRepo}/contents/${file.path}`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({
+        message: `Update ${file.path} via PrimeJobs Studio`,
+        content: toBase64Utf8(file.content),
+        branch,
+        ...(existingSha ? { sha: existingSha } : {}),
+      }),
+    });
+
+    if (!putRes.ok) {
+      const errData = await putRes.json().catch(() => ({}));
+      throw new Error(
+        `Failed uploading ${file.path}: ${errData.message || putRes.statusText} (Ensure token has "repo" and "workflow" permissions)`
+      );
+    }
+  }
+
+  return {
+    repoUrl: `https://github.com/${cleanRepo}`,
+    actionsUrl: `https://github.com/${cleanRepo}/actions`,
+    releasesUrl: `https://github.com/${cleanRepo}/releases`,
+  };
 }
