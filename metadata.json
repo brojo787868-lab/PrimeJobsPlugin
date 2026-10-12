@@ -1,0 +1,6 @@
+{
+  "name": "PrimeJobs — Minecraft Job GUI Plugin Studio",
+  "description": "Interactive Minecraft 5-Job GUI simulator, economy configurator, and complete Spigot/Paper Java plugin code generator with Vault integration.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
